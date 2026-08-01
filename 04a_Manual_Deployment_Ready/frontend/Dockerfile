@@ -1,34 +1,37 @@
-# 1. Build Stage: Install dependencies and build the Next.js application
-FROM node:18-alpine AS builder
-
-WORKDIR /app
-
-# Copy package.json and package-lock.json
-COPY package*.json ./
-
-# Install dependencies
-RUN npm install
-
-# Copy the rest of the application source code
-COPY . .
-
-# Build the Next.js application for production
-# This command will also be used to pass in the backend URL at build time
-RUN npm run build
-
-# 2. Production Stage: Create a smaller image with only the necessary files
+# Use Node.js 18 runtime as a parent image
 FROM node:18-alpine
 
+# Set the working directory in the container
 WORKDIR /app
 
-# Copy the built application from the builder stage
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/node_modules ./node_modules
+# Install pnpm globally
+RUN npm install -g pnpm
 
-# Expose the port the app runs on
+# Copy package files
+COPY package*.json ./
+
+# Copy lockfile if it exists (using wildcard to make it optional)
+COPY pnpm-lock.yaml* ./
+
+# Install dependencies
+# Use --no-frozen-lockfile to allow regenerating lockfile if needed
+# This is more flexible for development and CI environments
+RUN pnpm install --no-frozen-lockfile
+
+# Copy the rest of the application code
+COPY . .
+
+# Accept build argument for backend URL
+ARG NEXT_PUBLIC_BACKEND_URL
+
+# Set the environment variable for build
+ENV NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL}
+
+# Build the Next.js application
+RUN pnpm build
+
+# Expose port 3000
 EXPOSE 3000
 
 # Start the application
-CMD ["npm", "start"] 
+CMD ["pnpm", "start"]

@@ -1,3 +1,3 @@
-# Generated image references - Tue Aug 19 22:01:12 PDT 2025
-backend_image = "us-central1-docker.pkg.dev/sdlcv3/storygen-repo/storygen-backend:latest"
-frontend_image = "us-central1-docker.pkg.dev/sdlcv3/storygen-repo/storygen-frontend:latest"
+# Generated image references - Sat Aug  1 12:43:41 AM UTC 2026
+backend_image = "us-central1-docker.pkg.dev/gen-lang-client-0479217017/storygen-repo/storygen-backend:latest"
+frontend_image = "us-central1-docker.pkg.dev/gen-lang-client-0479217017/storygen-repo/storygen-frontend:latest"

@@ -1,0 +1,14 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '--build-arg'
+      - 'NEXT_PUBLIC_BACKEND_URL=${_BACKEND_URL}'
+      - '-t'
+      - '${_IMAGE_NAME}'
+      - '.'
+images:
+  - '${_IMAGE_NAME}'
+substitutions:
+  _BACKEND_URL: 'http://localhost:8000'  # Default fallback
+  _IMAGE_NAME: 'gcr.io/${PROJECT_ID}/storygen-frontend'

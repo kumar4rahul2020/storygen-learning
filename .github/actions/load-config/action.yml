@@ -1,0 +1,68 @@
+name: 'Load Deployment Configuration'
+description: 'Load deployment configuration from .github/config/deployment.yml'
+runs:
+  using: "composite"
+  steps:
+    - name: Load deployment configuration
+      shell: bash
+      run: |
+        echo "🔧 Loading deployment configuration from .github/config/deployment.yml"
+        
+        # Install yq for YAML parsing
+        sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+        sudo chmod +x /usr/local/bin/yq
+        
+        # Parse config file and set environment variables
+        CONFIG_FILE=".github/config/deployment.yml"
+        
+        if [ ! -f "$CONFIG_FILE" ]; then
+          echo "❌ Configuration file not found: $CONFIG_FILE"
+          echo "Please run: ./00_Starting_Here/setup-direct.sh to generate it"
+          exit 1
+        fi
+        
+        # Read values from config file
+        PROJECT_ID=$(yq '.project_id' "$CONFIG_FILE")
+        WORKLOAD_IDENTITY_PROVIDER=$(yq '.workload_identity_provider' "$CONFIG_FILE")
+        SERVICE_ACCOUNT_EMAIL=$(yq '.service_account_email' "$CONFIG_FILE")
+        GENMEDIA_BUCKET=$(yq '.genmedia_bucket' "$CONFIG_FILE")
+        SECRET_MANAGER=$(yq '.secret_manager' "$CONFIG_FILE")
+        GCP_REGION=$(yq '.gcp_region' "$CONFIG_FILE")
+        ARTIFACT_REPO=$(yq '.artifact_repo' "$CONFIG_FILE")
+        BACKEND_SERVICE_NAME=$(yq '.backend_service_name' "$CONFIG_FILE")
+        FRONTEND_SERVICE_NAME=$(yq '.frontend_service_name' "$CONFIG_FILE")
+        BACKEND_IMAGE_NAME=$(yq '.backend_image_name' "$CONFIG_FILE")
+        FRONTEND_IMAGE_NAME=$(yq '.frontend_image_name' "$CONFIG_FILE")
+        BACKEND_MEMORY=$(yq '.backend_memory' "$CONFIG_FILE")
+        BACKEND_CPU=$(yq '.backend_cpu' "$CONFIG_FILE")
+        FRONTEND_MEMORY=$(yq '.frontend_memory' "$CONFIG_FILE")
+        FRONTEND_CPU=$(yq '.frontend_cpu' "$CONFIG_FILE")
+        MIN_INSTANCES=$(yq '.min_instances' "$CONFIG_FILE")
+        MAX_INSTANCES=$(yq '.max_instances' "$CONFIG_FILE")
+        
+        # Validate required values
+        if [ "$PROJECT_ID" = "PLACEHOLDER_PROJECT_ID" ] || [ "$PROJECT_ID" = "null" ]; then
+          echo "❌ Configuration not set up. Please run: ./00_Starting_Here/setup-direct.sh"
+          exit 1
+        fi
+        
+        # Set as GitHub environment variables for all subsequent steps
+        echo "PROJECT_ID=$PROJECT_ID" >> $GITHUB_ENV
+        echo "WORKLOAD_IDENTITY_PROVIDER=$WORKLOAD_IDENTITY_PROVIDER" >> $GITHUB_ENV
+        echo "SERVICE_ACCOUNT_EMAIL=$SERVICE_ACCOUNT_EMAIL" >> $GITHUB_ENV
+        echo "BUCKET_NAME=$GENMEDIA_BUCKET" >> $GITHUB_ENV
+        echo "SECRET_NAME=$SECRET_MANAGER" >> $GITHUB_ENV
+        echo "REGION=$GCP_REGION" >> $GITHUB_ENV
+        echo "ARTIFACT_REPO=$ARTIFACT_REPO" >> $GITHUB_ENV
+        echo "BACKEND_SERVICE_NAME=$BACKEND_SERVICE_NAME" >> $GITHUB_ENV
+        echo "FRONTEND_SERVICE_NAME=$FRONTEND_SERVICE_NAME" >> $GITHUB_ENV
+        echo "BACKEND_IMAGE_NAME=$BACKEND_IMAGE_NAME" >> $GITHUB_ENV
+        echo "FRONTEND_IMAGE_NAME=$FRONTEND_IMAGE_NAME" >> $GITHUB_ENV
+        echo "BACKEND_MEMORY=$BACKEND_MEMORY" >> $GITHUB_ENV
+        echo "BACKEND_CPU=$BACKEND_CPU" >> $GITHUB_ENV
+        echo "FRONTEND_MEMORY=$FRONTEND_MEMORY" >> $GITHUB_ENV
+        echo "FRONTEND_CPU=$FRONTEND_CPU" >> $GITHUB_ENV
+        echo "MIN_INSTANCES=$MIN_INSTANCES" >> $GITHUB_ENV
+        echo "MAX_INSTANCES=$MAX_INSTANCES" >> $GITHUB_ENV
+        
+        echo "✅ Configuration loaded successfully"

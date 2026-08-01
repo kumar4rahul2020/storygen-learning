@@ -1,0 +1,117 @@
+name: StoryGen Backend CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Run Unit Tests (PR & Commit Validation)
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Run Pytest
+        run: |
+          pytest backend/test_main.py -v
+
+      - name: Notification on Failure
+        if: failure()
+        run: |
+          echo "::error::Automated tests failed! Please fix the test failures before merging."
+
+  deploy:
+    name: Trigger Google Cloud Build & Deploy
+    needs: test
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set Environment variables
+        id: set-env
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "ENV=production" >> $GITHUB_OUTPUT
+          else
+            echo "ENV=staging" >> $GITHUB_OUTPUT
+          fi
+          
+          # Load project variables from input.tfvars if available, else use fallbacks
+          if [ -f "terraform_code/input.tfvars" ]; then
+            PROJECT_ID=$(grep -E '^project_id[[:space:]]*=' terraform_code/input.tfvars | head -n 1 | cut -d'"' -f2)
+            REGION=$(grep -E '^region[[:space:]]*=' terraform_code/input.tfvars | head -n 1 | cut -d'"' -f2)
+            BUCKET_NAME=$(grep -E '^bucket_name[[:space:]]*=' terraform_code/input.tfvars | head -n 1 | cut -d'"' -f2)
+            SECRET_NAME=$(grep -E '^secret_name[[:space:]]*=' terraform_code/input.tfvars | head -n 1 | cut -d'"' -f2)
+            
+            echo "PROJECT_ID=$PROJECT_ID" >> $GITHUB_OUTPUT
+            echo "REGION=$REGION" >> $GITHUB_OUTPUT
+            echo "BUCKET_NAME=$BUCKET_NAME" >> $GITHUB_OUTPUT
+            echo "SECRET_NAME=$SECRET_NAME" >> $GITHUB_OUTPUT
+          else
+            echo "PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}" >> $GITHUB_OUTPUT
+            echo "REGION=us-central1" >> $GITHUB_OUTPUT
+            echo "BUCKET_NAME=storygen-workshop" >> $GITHUB_OUTPUT
+            echo "SECRET_NAME=sdlcv3-api-secret" >> $GITHUB_OUTPUT
+          fi
+
+      # Authenticate to Google Cloud
+      # Supports Workload Identity Federation (WIF) or fallback to Service Account Key
+      - name: Google Auth
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          token_format: 'access_token'
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA_EMAIL }}
+          credentials_json: ${{ secrets.GCP_SA_KEY }} # Fallback JSON key secret
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Trigger Cloud Build
+        run: |
+          gcloud builds submit . \
+            --config=backend/cloudbuild.yaml \
+            --project="${{ steps.set-env.outputs.PROJECT_ID || secrets.GCP_PROJECT_ID }}" \
+            --substitutions="_ENV=${{ steps.set-env.outputs.ENV }},_SERVICE_NAME=storygen-backend,_REGION=${{ steps.set-env.outputs.REGION }},_BUCKET_NAME=${{ steps.set-env.outputs.BUCKET_NAME }},_SECRET_NAME=${{ steps.set-env.outputs.SECRET_NAME }}"
+
+      - name: Write Deployment Summary
+        if: success()
+        run: |
+          echo "### 🎉 Deployment Successful!" >> $GITHUB_STEP_SUMMARY
+          echo "The StoryGen Backend has been built, tested, and deployed successfully via Google Cloud Build." >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment:** \`${{ steps.set-env.outputs.ENV }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Project ID:** \`${{ steps.set-env.outputs.PROJECT_ID || secrets.GCP_PROJECT_ID }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Region:** \`${{ steps.set-env.outputs.REGION }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Service Name:** \`storygen-backend-${{ steps.set-env.outputs.ENV }}\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Slack Notification (Optional)
+        if: always() && env.SLACK_WEBHOOK_URL != ''
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_TITLE: "StoryGen Deployment Status: ${{ job.status }}"
+          SLACK_MESSAGE: "Backend deployment to ${{ steps.set-env.outputs.ENV }} finished with status ${{ job.status }}."
+          SLACK_COLOR: ${{ job.status == 'success' && 'good' || 'danger' }}
